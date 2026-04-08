@@ -1,6 +1,6 @@
-# Numerical and Analytical Methods for Engineers
+# Mixed Finite Element Methods
 
-This repository contains the development environment for the course **Numerical and Analytical Methods for Engineers**. It is designed to run seamlessly using GitHub Codespaces, providing a consistent Python-based computational environment for all students.
+This repository contains the development environment for the course **Mixed Finite Element Methods**. It is designed to run seamlessly using GitHub Codespaces, providing a consistent Python-based computational environment for all students.
 
 ## Prerequisites
 

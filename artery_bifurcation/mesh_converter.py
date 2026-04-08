@@ -2,6 +2,8 @@ import vtk
 import meshio
 import numpy as np
 from scipy.spatial import cKDTree
+from pathlib import Path
+
 
 def convert_to_msh(vtu_file, vtp_file, output_file):
     # Convert vtp to vtu using vtk
@@ -35,7 +37,7 @@ def convert_to_msh(vtu_file, vtp_file, output_file):
         f.write(f"$PhysicalNames\n{1 + len(unique_faces)}\n")
         f.write('3 1 "volume"\n')
         for fid in unique_faces:
-            f.write(f'2 {fid} "wall{fid}"\n')
+            f.write(f'2 {fid} "bdry{fid}"\n')
         f.write("$EndPhysicalNames\n")
 
         # Nodes
@@ -58,7 +60,11 @@ def convert_to_msh(vtu_file, vtp_file, output_file):
         f.write("$EndElements\n")
 
     print(f"Written to {output_file}")
-    print(f"Boundaries: {['wall'+str(fid) for fid in unique_faces]}")
+    print(f"Boundaries: {['bdry'+str(fid) for fid in unique_faces]}")
 
 
-convert_to_msh("ANR_106cgs.vtu", "ANR_106cgs.vtp", "geometry.msh")
+base_dir = Path(__file__).resolve().parent
+vtu_file = str(base_dir / "ANR_106cgs.vtu")
+vtp_file = str(base_dir / "ANR_106cgs.vtp")
+
+convert_to_msh(mesh_file, mesh_file, "geometry.msh")

@@ -8,7 +8,6 @@ print("Elements:", mesh.ne)
 print("Boundaries:", mesh.GetBoundaries())
 
 fes = ng.H1(mesh, order=1, dirichlet="wall2|wall3|wall4")
-
 p0 = ng.L2(mesh, order=0)   # piecewise constant, fully discontinuous
 
 sol = ng.GridFunction(fes)

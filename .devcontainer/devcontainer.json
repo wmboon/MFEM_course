@@ -18,6 +18,7 @@
         "ms-toolsai.jupyter-renderers"
       ],
       "settings": {
+        "python.defaultInterpreterPath": "/usr/bin/python3",
         "chat.agent.enabled": false,
         "chat.disableAIFeatures": true,
 

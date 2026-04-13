@@ -42,6 +42,7 @@ rhs = f.vec - a.mat * sol.vec
 sol.vec.data += a.mat.Inverse(Lagrange1.FreeDofs()) * rhs
 
 # Output to vtk format for Paraview
+filename = str(base_dir / "bifurc")
 vtk = ng.VTKOutput(mesh, coefs=[sol, -ng.grad(sol)],
-                   names=["pressure", "flux"], filename="bifurc")
+                   names=["pressure", "flux"], filename=filename)
 vtk.Do()

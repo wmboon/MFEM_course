@@ -1,20 +1,48 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.sparse as sps
 
 # Copied from lab1
 
 
-def solve_FEM_Poisson_non_homogeneous(N):
+def assemble_mass_matrix(N):
     h = 1/N
     x = np.linspace(0, 1, N + 1)
-    A_E = np.array([[1, -1], [-1, 1]]) / h
+    M_E = np.array([[2, 1], [1, 2]]) * h / 6
 
-    A = np.zeros((N + 1, N + 1))
+    M = np.zeros((N + 1, N + 1))
 
     for i in range(N):
         loc_dofs = [i, i+1]
-        A[np.ix_(loc_dofs, loc_dofs)] += A_E
+        M[np.ix_(loc_dofs, loc_dofs)] += M_E
 
+    return M
+
+
+def assemble_div_matrix(N):
+    h = 1/N
+    x = np.linspace(0, 1, N + 1)
+    B_E = np.array([-1, 1])
+
+    B = np.zeros((N, N + 1))
+
+    for i in range(N):
+        loc_dofs = [i, i+1]
+        B[i, loc_dofs] += B_E
+
+    return B
+
+
+def assemble_SPP(N):
+    A = assemble_mass_matrix(N)
+    B = assemble_div_matrix(N)
+
+    spp = sps.block_array([[A, B.T], [B, None]])
+
+    return spp
+
+
+def new_func():
     b = np.zeros(N + 1)
 
     for i in range(N):
@@ -24,10 +52,10 @@ def solve_FEM_Poisson_non_homogeneous(N):
     u = np.zeros(N + 1)
     u[0] = 1
 
-    b -= A @ u
+    b -= M @ u
 
     freedofs = np.arange(1, N + 1)
-    A_free = A[np.ix_(freedofs, freedofs)]
+    A_free = M[np.ix_(freedofs, freedofs)]
     b_free = b[freedofs]
 
     b_free[-1] += -1
@@ -39,22 +67,30 @@ def solve_FEM_Poisson_non_homogeneous(N):
     return u, x
 
 
-u, x = solve_FEM_Poisson_non_homogeneous(10)
+if __name__ == "__main__":
+    N = 10
+    spp = assemble_SPP(N)
 
-plt.plot(x, u)
-plt.show()
+    plt.spy(spp)
+    plt.show()
 
+    pass
 
-# Mass matrix computation
-N = 10
-h = 1/N
+    # M = assemble_mass_matrix(N)
 
-M_E = np.array([[2, 1], [1, 2]]) * h / 6
+    # plt.plot(x, u)
+    # plt.show()
 
-M = np.zeros((N + 1, N + 1))
+    # # Mass matrix computation
+    # N = 10
+    # h = 1/N
 
-for i in range(N):
-    loc_dofs = [i, i+1]
-    M[np.ix_(loc_dofs, loc_dofs)] += M_E
+    # M_E = np.array([[2, 1], [1, 2]]) * h / 6
 
-print(M * 6)
+    # M = np.zeros((N + 1, N + 1))
+
+    # for i in range(N):
+    #     loc_dofs = [i, i+1]
+    #     M[np.ix_(loc_dofs, loc_dofs)] += M_E
+
+    # print(M * 6)

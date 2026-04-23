@@ -7,13 +7,12 @@ import scipy.sparse as sps
 class Grid:
     def __init__(self, N):
         self.N = N
-        self.h = 1/N
+        self.h = 1 / N
         self.x = np.linspace(0, 1, N + 1)
         self.cell_centers = (self.x[:-1] + self.x[1:]) / 2
 
 
-class MixedFiniteElement():
-
+class MixedFiniteElement:
     def assemble_mass_matrix(self, grid: Grid):
         M_E = np.array([[2, 1], [1, 2]]) * grid.h / 6
 
@@ -22,7 +21,7 @@ class MixedFiniteElement():
         vals = np.array([])
 
         for i in range(grid.N):
-            loc_dofs = [i, i+1]
+            loc_dofs = [i, i + 1]
             rows = np.append(rows, np.repeat(loc_dofs, 2))
             cols = np.append(cols, np.tile(loc_dofs, 2))
             vals = np.append(vals, M_E.flatten())
@@ -37,7 +36,7 @@ class MixedFiniteElement():
         vals = np.array([])
 
         for i in range(grid.N):
-            loc_dofs = [i, i+1]
+            loc_dofs = [i, i + 1]
             rows = np.append(rows, np.repeat(loc_dofs, 2))
             cols = np.append(cols, np.tile(loc_dofs, 2))
             vals = np.append(vals, M_E.flatten())
@@ -52,7 +51,7 @@ class MixedFiniteElement():
         vals = np.array([])
 
         for i in range(grid.N):
-            loc_dofs = [i, i+1]
+            loc_dofs = [i, i + 1]
             rows = np.append(rows, np.repeat(i, 2))
             cols = np.append(cols, loc_dofs)
             vals = np.append(vals, B_E)
@@ -60,7 +59,7 @@ class MixedFiniteElement():
         return sps.csc_array((vals, (rows, cols)))
 
     def assemble_SPP(self, grid):
-        """ 
+        """
         assembles the saddle point problem
         """
         A = self.assemble_A_matrix(grid)
@@ -76,8 +75,8 @@ class MixedFiniteElement():
 
         sol = sps.linalg.spsolve(spp, rhs)
 
-        u_sol = sol[:grid.N+1]
-        p_sol = sol[grid.N+1:]
+        u_sol = sol[: grid.N + 1]
+        p_sol = sol[grid.N + 1 :]
 
         return u_sol, p_sol
 
@@ -112,13 +111,11 @@ class MixedFiniteElement():
 
 
 class MixedDarcy(MixedFiniteElement):
-
     def assemble_A_matrix(self, grid):
         return self.assemble_mass_matrix(grid)
 
 
 class MixedDarcyRobin(MixedDarcy):
-
     def assemble_A_matrix(self, grid: Grid):
         M = self.assemble_mass_matrix(grid)
 
@@ -132,7 +129,6 @@ class MixedDarcyRobin(MixedDarcy):
 
 
 class Stokes(MixedFiniteElement):
-
     def assemble_A_matrix(self, grid):
         return self.assemble_stiffness_matrix(grid)
 
@@ -153,8 +149,8 @@ class Stokes(MixedFiniteElement):
 
         sol[freedofs] = sol_reduced
 
-        u_sol = sol[:grid.N+1]
-        p_sol = sol[grid.N+1:]
+        u_sol = sol[: grid.N + 1]
+        p_sol = sol[grid.N + 1 :]
 
         return u_sol, p_sol
 
@@ -176,7 +172,7 @@ class Herrmann_elasticity(Stokes):
         self.labda = labda
 
     def assemble_SPP(self, grid):
-        """ 
+        """
         assembles the saddle point problem
         """
         A = self.assemble_stiffness_matrix(grid)

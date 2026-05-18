@@ -1,155 +1,127 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import scipy.sparse as sps
 
 # Copied from lab1
 
 
-def grid(N):
-    h = 1 / N
-    x = np.linspace(0, 1, N + 1)
-    return x, h
+class Grid:
+    def __init__(self, N):
+        self.h = 1 / N
+        self.x = np.linspace(0, 1, N + 1)
+        self.N = N
+        self.cell_centers = (self.x[:-1] + self.x[1:]) / 2
 
 
-def assemble_mass_matrix(N, h):
-    M_E = np.array([[2, 1], [1, 2]]) * h / 6
+class MixedDarcy:
+    def assemble_mass_matrix(self, grid: Grid):
+        M_E = np.array([[2, 1], [1, 2]]) * grid.h / 6
 
-    # M = np.zeros((N + 1, N + 1))
-    rows = np.array([], dtype=int)
-    cols = np.array([], dtype=int)
-    vals = np.array([])
+        # M = np.zeros((N + 1, N + 1))
+        rows = np.array([], dtype=int)
+        cols = np.array([], dtype=int)
+        vals = np.array([])
 
-    for i in range(N):
-        loc_dofs = [i, i + 1]
-        np.ix_(loc_dofs, loc_dofs)
-        rows = np.append(rows, np.repeat(loc_dofs, 2))
-        cols = np.append(cols, np.tile(loc_dofs, 2))
-        vals = np.append(vals, M_E.flatten())
+        for i in range(grid.N):
+            loc_dofs = [i, i + 1]
+            np.ix_(loc_dofs, loc_dofs)
+            rows = np.append(rows, np.repeat(loc_dofs, 2))
+            cols = np.append(cols, np.tile(loc_dofs, 2))
+            vals = np.append(vals, M_E.flatten())
 
-    return sps.csc_array((vals, (rows, cols)))
+        return sps.csc_array((vals, (rows, cols)))
 
+    def assemble_div_matrix(self, grid: Grid):
+        B_E = np.array([-1, 1])
 
-def assemble_div_matrix(N):
-    B_E = np.array([-1, 1])
+        rows = np.array([], dtype=int)
+        cols = np.array([], dtype=int)
+        vals = np.array([])
 
-    rows = np.array([], dtype=int)
-    cols = np.array([], dtype=int)
-    vals = np.array([])
+        for i in range(grid.N):
+            loc_dofs = [i, i + 1]
+            rows = np.append(rows, np.repeat(i, 2))
+            cols = np.append(cols, loc_dofs)
+            vals = np.append(vals, B_E)
 
-    for i in range(N):
-        loc_dofs = [i, i + 1]
-        rows = np.append(rows, np.repeat(i, 2))
-        cols = np.append(cols, loc_dofs)
-        vals = np.append(vals, B_E)
+        return sps.csc_array((vals, (rows, cols)))
 
-    return sps.csc_array((vals, (rows, cols)))
+    def assemble_SPP(self, grid: Grid):
+        A = self.assemble_mass_matrix(grid)
+        B = self.assemble_div_matrix(grid)
 
+        spp = sps.block_array([[A, -B.T], [B, None]]).tocsc()
+        return spp
 
-def assemble_SPP(N, h):
-    A = assemble_mass_matrix(N, h)
-    B = assemble_div_matrix(N)
+    def assemble_rhs(self, grid: Grid, source):
+        rhs_p = np.array([source(x) * grid.h for x in grid.cell_centers])
+        rhs_v = np.zeros(grid.N + 1)
+        return np.hstack((rhs_v, rhs_p))
 
-    spp = sps.block_array([[A, -B.T], [B, None]]).tocsc()
-    return spp
+    def solve_problem(self, grid: Grid, source):
+        spp = self.assemble_SPP(grid)
+        rhs = self.assemble_rhs(grid, source)
 
+        sol = np.zeros(spp.shape[0])
+        sol[0] = 1
 
-def assemble_rhs(N, x, h):
-    cell_centers = (x[:-1] + x[1:]) / 2
-    rhs_p = np.array([source(x) * h for x in cell_centers])
-    rhs_v = np.zeros(N + 1)
-    return np.hstack((rhs_v, rhs_p))
+        rhs -= spp @ sol
 
+        freedofs = np.arange(1, spp.shape[0])
+        spp_free = spp[np.ix_(freedofs, freedofs)]
+        rhs_free = rhs[freedofs]
 
-def source(x):
-    return (2 * np.pi) ** 2 * np.sin(2 * np.pi * x)
+        sol_reduced = sps.linalg.spsolve(spp_free, rhs_free)
 
+        sol[freedofs] = sol_reduced
 
-def solve_problem(N):
-    x, h = grid(N)
+        u_sol = sol[: grid.N + 1]
+        p_sol = sol[grid.N + 1 :]
+        return u_sol, p_sol
 
-    spp = assemble_SPP(N, h)
-    rhs = assemble_rhs(N, x, h)
+    def compute_error_flux(self, u_sol, u_true, grid: Grid):
+        u_interp = np.array([u_true(x_i) for x_i in grid.x])
+        diff = u_sol - u_interp
+        M = self.assemble_mass_matrix(grid)
+        error_squared = diff @ M @ diff
+        norm_squared = u_interp @ M @ u_interp
+        return np.sqrt(error_squared / norm_squared)
 
-    sol = sps.linalg.spsolve(spp, rhs)
+    def compute_error_pressure(self, p_sol, p_true, grid: Grid):
 
-    u_sol = sol[: N + 1]
-    p_sol = sol[N + 1 :]
-    return u_sol, p_sol
+        p_interp = np.array([p_true(x_i) for x_i in grid.cell_centers])
+        diff = p_sol - p_interp
 
+        M = grid.h * sps.eye_array(grid.N)
 
-def u_true(x):
-    return -2 * np.pi * np.cos(2 * np.pi * x)
-
-
-def p_true(x):
-    return np.sin(2 * np.pi * x)
-
-
-def compute_error_flux(u_sol, u_true, N):
-    x, _ = grid(N)
-    u_interp = np.array([u_true(x_i) for x_i in x])
-    diff = u_sol - u_interp
-    M = assemble_mass_matrix(N, 1 / N)
-    error_squared = diff @ M @ diff
-    norm_squared = u_interp @ M @ u_interp
-    return np.sqrt(error_squared / norm_squared)
-
-
-def compute_error_pressure(p_sol, p_true, N):
-    x, h = grid(N)
-    cell_centers = (x[:-1] + x[1:]) / 2
-
-    p_interp = np.array([p_true(x_i) for x_i in cell_centers])
-    diff = p_sol - p_interp
-
-    M = h * sps.eye_array(N)
-
-    error_squared = diff @ M @ diff
-    norm_squared = p_interp @ M @ p_interp
-    return np.sqrt(error_squared / norm_squared)
+        error_squared = diff @ M @ diff
+        norm_squared = p_interp @ M @ p_interp
+        return np.sqrt(error_squared / norm_squared)
 
 
-def compute_rate(error, N_list):
-    return np.log(error[:-1] / error[1:]) / np.log(N_list[1:] / N_list[:-1])
+class MixedDarcyRobin(MixedDarcy):
+    def assemble_mass_matrix(self, grid: Grid):
+        M = super().assemble_mass_matrix(grid)
+        rows = np.array([0, grid.N])
+        cols = rows
+        vals = np.ones(2)
+        R = sps.csc_array((vals, (rows, cols)))
+        return M + R
 
 
-if __name__ == "__main__":
-    N_list = np.array([5, 10, 20, 40, 60, 80, 100])
-    error_u = np.array([])
-    error_p = np.array([])
-    for N in N_list:
-        u_sol, p_sol = solve_problem(N)
-        error_u = np.append(error_u, compute_error_flux(u_sol, u_true, N))
-        error_p = np.append(error_p, compute_error_pressure(p_sol, p_true, N))
-    plt.plot(N_list, error_u)
-    plt.plot(N_list, error_p)
-    plt.show()
+class Stokes(MixedDarcy):
+    def assemble_mass_matrix(self, grid: Grid):
+        M_E = np.array([[1, -1], [-1, 1]]) * 1 / grid.h
 
-    rates_p = compute_rate(error_p, N_list)
-    rates_u = compute_rate(error_u, N_list)
-    print(f"rates_p =", rates_p, "rates_u =", rates_u)
+        # M = np.zeros((N + 1, N + 1))
+        rows = np.array([], dtype=int)
+        cols = np.array([], dtype=int)
+        vals = np.array([])
 
-    # N = 40
-    # x, h = grid(N)
-    # pwconstant_x = np.repeat(x, 2)[1:-1]
-    # pwconstant_p = np.repeat(p_sol, 2)
+        for i in range(grid.N):
+            loc_dofs = [i, i + 1]
+            np.ix_(loc_dofs, loc_dofs)
+            rows = np.append(rows, np.repeat(loc_dofs, 2))
+            cols = np.append(cols, np.tile(loc_dofs, 2))
+            vals = np.append(vals, M_E.flatten())
 
-    # plt.plot(x, u_sol)
-    # plt.plot(pwconstant_x, pwconstant_p)
-
-    # plt.spy(spp)
-    # plt.show()
-
-    pass
-
-    # h = 1 / N
-
-    # M_E = np.array([[2, 1], [1, 2]]) * h / 6
-
-    # M = np.zeros((N + 1, N + 1))
-
-    # for i in range(N):
-    #     loc_dofs = [i, i + 1]
-    #     M[np.ix_(loc_dofs, loc_dofs)] += M_E
-
-    # print(M * 6)
+        return sps.csc_array((vals, (rows, cols)))

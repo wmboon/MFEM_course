@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 
 def source(x: float) -> float:
-    return (2 * np.pi)**2 * np.sin(2 * np.pi * x)
+    return (2 * np.pi) ** 2 * np.sin(2 * np.pi * x)
 
 
 # def u_true(x):
@@ -34,7 +34,7 @@ plt.legend(["Flux", "Pressure"])
 # plt.show()
 
 # plt.spy(spp)
-plt.savefig('plot.png', dpi=150, bbox_inches='tight')
+plt.savefig("plot.png", dpi=150, bbox_inches="tight")
 
 plt.close()
 

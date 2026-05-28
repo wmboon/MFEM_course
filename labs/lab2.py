@@ -12,9 +12,26 @@ class Grid:
         self.cell_centers = (self.x[:-1] + self.x[1:]) / 2
 
 
-class MixedDarcy:
+class MixedFiniteElement:
     def assemble_mass_matrix(self, grid: Grid):
         M_E = np.array([[2, 1], [1, 2]]) * grid.h / 6
+
+        # M = np.zeros((N + 1, N + 1))
+        rows = np.array([], dtype=int)
+        cols = np.array([], dtype=int)
+        vals = np.array([])
+
+        for i in range(grid.N):
+            loc_dofs = [i, i + 1]
+            np.ix_(loc_dofs, loc_dofs)
+            rows = np.append(rows, np.repeat(loc_dofs, 2))
+            cols = np.append(cols, np.tile(loc_dofs, 2))
+            vals = np.append(vals, M_E.flatten())
+
+        return sps.csc_array((vals, (rows, cols)))
+
+    def assemble_stiffness_matrix(self, grid: Grid):
+        M_E = np.array([[1, -1], [-1, 1]]) * 1 / grid.h
 
         # M = np.zeros((N + 1, N + 1))
         rows = np.array([], dtype=int)
@@ -46,16 +63,66 @@ class MixedDarcy:
         return sps.csc_array((vals, (rows, cols)))
 
     def assemble_SPP(self, grid: Grid):
-        A = self.assemble_mass_matrix(grid)
+        A = self.assemble_A_matrix(grid)
         B = self.assemble_div_matrix(grid)
 
         spp = sps.block_array([[A, -B.T], [B, None]]).tocsc()
         return spp
 
+    def compute_error_flux(self, u_sol, u_true, grid: Grid):
+        u_interp = np.array([u_true(x_i) for x_i in grid.x])
+        diff = u_sol - u_interp
+        M = self.assemble_mass_matrix(grid)
+        error_squared = diff @ M @ diff
+        norm_squared = u_interp @ M @ u_interp
+        return np.sqrt(error_squared / norm_squared)
+
+    def compute_error_pressure(self, p_sol, p_true, grid: Grid):
+
+        p_interp = np.array([p_true(x_i) for x_i in grid.cell_centers])
+        diff = p_sol - p_interp
+
+        M = grid.h * sps.eye_array(grid.N)
+
+        error_squared = diff @ M @ diff
+        norm_squared = p_interp @ M @ p_interp
+        return np.sqrt(error_squared / norm_squared)
+
     def assemble_rhs(self, grid: Grid, source):
         rhs_p = np.array([source(x) * grid.h for x in grid.cell_centers])
         rhs_v = np.zeros(grid.N + 1)
         return np.hstack((rhs_v, rhs_p))
+
+    def solve_problem(self, grid: Grid, source):
+
+        spp = self.assemble_SPP(grid)
+        rhs = self.assemble_rhs(grid, source)
+
+        sol = sps.linalg.spsolve(spp, rhs)
+
+        u_sol = sol[: grid.N + 1]
+        p_sol = sol[grid.N + 1 :]
+        return u_sol, p_sol
+
+
+class MixedDarcy(MixedFiniteElement):
+    def assemble_A_matrix(self, grid):
+        return self.assemble_mass_matrix(grid)
+
+
+class MixedDarcyRobin(MixedDarcy):
+    def assemble_A_matrix(self, grid: Grid):
+        M = self.assemble_mass_matrix(grid)
+        rows = np.array([0, grid.N])
+        cols = rows
+        vals = np.ones(2)
+        R = sps.csc_array((vals, (rows, cols)))
+        return M + R
+
+
+class Stokes(MixedFiniteElement):
+    def assemble_A_matrix(self, grid):
+        return self.assemble_stiffness_matrix(grid)
 
     def solve_problem(self, grid: Grid, source):
         spp = self.assemble_SPP(grid)
@@ -78,50 +145,27 @@ class MixedDarcy:
         p_sol = sol[grid.N + 1 :]
         return u_sol, p_sol
 
-    def compute_error_flux(self, u_sol, u_true, grid: Grid):
-        u_interp = np.array([u_true(x_i) for x_i in grid.x])
-        diff = u_sol - u_interp
+    def assemble_rhs(self, grid: Grid, source):
+        f_interp = [source(x) for x in grid.x]
+        f_interp = np.array(f_interp)
         M = self.assemble_mass_matrix(grid)
-        error_squared = diff @ M @ diff
-        norm_squared = u_interp @ M @ u_interp
-        return np.sqrt(error_squared / norm_squared)
 
-    def compute_error_pressure(self, p_sol, p_true, grid: Grid):
-
-        p_interp = np.array([p_true(x_i) for x_i in grid.cell_centers])
-        diff = p_sol - p_interp
-
-        M = grid.h * sps.eye_array(grid.N)
-
-        error_squared = diff @ M @ diff
-        norm_squared = p_interp @ M @ p_interp
-        return np.sqrt(error_squared / norm_squared)
+        rhs_v = M @ f_interp
+        rhs_p = np.zeros(grid.N)
+        return np.hstack((rhs_v, rhs_p))
 
 
-class MixedDarcyRobin(MixedDarcy):
-    def assemble_mass_matrix(self, grid: Grid):
-        M = super().assemble_mass_matrix(grid)
-        rows = np.array([0, grid.N])
-        cols = rows
-        vals = np.ones(2)
-        R = sps.csc_array((vals, (rows, cols)))
-        return M + R
+class Herrmann_elasticity(Stokes):
+    def __init__(self, labda):
+        self.labda = labda
 
+    def assemble_SPP(self, grid: Grid):
+        A = self.assemble_stiffness_matrix(grid)
+        B = self.assemble_div_matrix(grid)
+        C = self.assemble_C_matrix(grid)
 
-class Stokes(MixedDarcy):
-    def assemble_mass_matrix(self, grid: Grid):
-        M_E = np.array([[1, -1], [-1, 1]]) * 1 / grid.h
+        spp = sps.block_array([[A, -B.T], [B, C]]).tocsc()
+        return spp
 
-        # M = np.zeros((N + 1, N + 1))
-        rows = np.array([], dtype=int)
-        cols = np.array([], dtype=int)
-        vals = np.array([])
-
-        for i in range(grid.N):
-            loc_dofs = [i, i + 1]
-            np.ix_(loc_dofs, loc_dofs)
-            rows = np.append(rows, np.repeat(loc_dofs, 2))
-            cols = np.append(cols, np.tile(loc_dofs, 2))
-            vals = np.append(vals, M_E.flatten())
-
-        return sps.csc_array((vals, (rows, cols)))
+    def assemble_C_matrix(self, grid: Grid):
+        return 1 / self.labda * grid.h * sps.eye_array(grid.N)

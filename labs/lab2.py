@@ -12,9 +12,25 @@ class Grid:
         self.cell_centers = (self.x[:-1] + self.x[1:]) / 2
 
 
-class MixedDarcy():
+class MixedFiniteElement():
+
     def assemble_mass_matrix(self, grid: Grid):
         M_E = np.array([[2, 1], [1, 2]]) * grid.h / 6
+
+        rows = np.array([], dtype=int)
+        cols = np.array([], dtype=int)
+        vals = np.array([])
+
+        for i in range(grid.N):
+            loc_dofs = [i, i+1]
+            rows = np.append(rows, np.repeat(loc_dofs, 2))
+            cols = np.append(cols, np.tile(loc_dofs, 2))
+            vals = np.append(vals, M_E.flatten())
+
+        return sps.csc_array((vals, (rows, cols)))
+
+    def assemble_stiffness_matrix(self, grid: Grid):
+        M_E = np.array([[1, -1], [-1, 1]]) / grid.h
 
         rows = np.array([], dtype=int)
         cols = np.array([], dtype=int)
@@ -47,18 +63,12 @@ class MixedDarcy():
         """ 
         assembles the saddle point problem
         """
-        A = self.assemble_mass_matrix(grid)
+        A = self.assemble_A_matrix(grid)
         B = self.assemble_div_matrix(grid)
 
         spp = sps.block_array([[A, -B.T], [B, None]]).tocsc()
 
         return spp
-
-    def assemble_rhs(self, grid, source) -> np.array:
-        rhs_p = np.array([source(x) * grid.h for x in grid.cell_centers])
-        rhs_v = np.zeros(grid.N + 1)
-
-        return np.hstack((rhs_v, rhs_p))
 
     def solve_problem(self, grid, source):
         spp = self.assemble_SPP(grid)
@@ -94,10 +104,23 @@ class MixedDarcy():
 
         return np.sqrt(error_squared / norm_squared)
 
+    def assemble_rhs(self, grid, source) -> np.array:
+        rhs_p = np.array([source(x) * grid.h for x in grid.cell_centers])
+        rhs_v = np.zeros(grid.N + 1)
+
+        return np.hstack((rhs_v, rhs_p))
+
+
+class MixedDarcy(MixedFiniteElement):
+
+    def assemble_A_matrix(self, grid):
+        return self.assemble_mass_matrix(grid)
+
 
 class MixedDarcyRobin(MixedDarcy):
-    def assemble_mass_matrix(self, grid: Grid):
-        M = super().assemble_mass_matrix(grid)
+
+    def assemble_A_matrix(self, grid: Grid):
+        M = self.assemble_mass_matrix(grid)
 
         rows = np.array([0, grid.N])
         cols = rows
@@ -108,21 +131,10 @@ class MixedDarcyRobin(MixedDarcy):
         return M + R
 
 
-class Stokes(MixedDarcy):
-    def assemble_mass_matrix(self, grid: Grid):
-        M_E = np.array([[1, -1], [-1, 1]]) / grid.h
+class Stokes(MixedFiniteElement):
 
-        rows = np.array([], dtype=int)
-        cols = np.array([], dtype=int)
-        vals = np.array([])
-
-        for i in range(grid.N):
-            loc_dofs = [i, i+1]
-            rows = np.append(rows, np.repeat(loc_dofs, 2))
-            cols = np.append(cols, np.tile(loc_dofs, 2))
-            vals = np.append(vals, M_E.flatten())
-
-        return sps.csc_array((vals, (rows, cols)))
+    def assemble_A_matrix(self, grid):
+        return self.assemble_stiffness_matrix(grid)
 
     def solve_problem(self, grid, source):
         spp = self.assemble_SPP(grid)
@@ -145,3 +157,35 @@ class Stokes(MixedDarcy):
         p_sol = sol[grid.N+1:]
 
         return u_sol, p_sol
+
+    def assemble_rhs(self, grid: Grid, source) -> np.array:
+
+        f_interp = [source(x) for x in grid.x]
+        f_interp = np.array(f_interp)
+
+        M = self.assemble_mass_matrix(grid)
+
+        rhs_v = M @ f_interp
+        rhs_p = np.zeros(grid.N)
+
+        return np.hstack((rhs_v, rhs_p))
+
+
+class Herrmann_elasticity(Stokes):
+    def __init__(self, labda):
+        self.labda = labda
+
+    def assemble_SPP(self, grid):
+        """ 
+        assembles the saddle point problem
+        """
+        A = self.assemble_stiffness_matrix(grid)
+        B = self.assemble_div_matrix(grid)
+        C = self.assemble_C_matrix(grid, self.labda)
+
+        spp = sps.block_array([[A, -B.T], [B, C]]).tocsc()
+
+        return spp
+
+    def assemble_C_matrix(self, grid: Grid, labda):
+        return 1 / labda * grid.h * sps.eye_array(grid.N)

@@ -67,4 +67,4 @@ base_dir = Path(__file__).resolve().parent
 vtu_file = str(base_dir / "ANR_106cgs.vtu")
 vtp_file = str(base_dir / "ANR_106cgs.vtp")
 
-convert_to_msh(mesh_file, mesh_file, "geometry.msh")
+convert_to_msh(vtu_file, vtp_file, "geometry.msh")

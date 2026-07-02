@@ -1,12 +1,12 @@
-from ngsolve import *
+import ngsolve as ng
 import meshio
 import numpy as np
 
-mesh = Mesh(unit_square.GenerateMesh(maxh=0.2))
+mesh = ng.Mesh(ng.unit_square.GenerateMesh(maxh=0.2))
 
-fes = L2(mesh, order=0)
-gf = GridFunction(fes)
-gf.Set(x + y)
+fes = ng.L2(mesh, order=0)
+gf = ng.GridFunction(fes)
+gf.Set(ng.x + ng.y)
 
 # Extract mesh nodes and connectivity
 points = np.array([mesh[v].point for v in mesh.vertices])
